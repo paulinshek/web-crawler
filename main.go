@@ -8,11 +8,12 @@ import (
 	"golang.org/x/net/html"
 	"bytes"
     "io/ioutil"
+    "regexp"
 )
 
 func everythingHandler(w http.ResponseWriter, r *http.Request) {
     // fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
-    crawl()
+    crawl("https://monzo.com/")
 }
 
 func main() {
@@ -20,15 +21,17 @@ func main() {
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func crawl() {
-	resp, err := http.Get("https://monzo.com/")
+func crawl(root string) {
+	var rootDomainFilter = domainFilter(root)
+
+	resp, err := http.Get(root)
 	defer resp.Body.Close()
 	if err == nil {
 		bodyAsByteArray, _ := ioutil.ReadAll(resp.Body)
 		
 		doc, _ := html.Parse(bytes.NewReader(bodyAsByteArray))
 
-		printLinks(doc)
+		printLinksRecursive(doc, rootDomainFilter)
 
 
 	} else{
@@ -37,16 +40,23 @@ func crawl() {
 
 }
 
-func printLinks(n *html.Node) {
+func printLinksRecursive(n *html.Node, rootDomainFilter) {
+
     if n.Type == html.ElementNode && n.Data == "a" {
         for _, a := range n.Attr {
-            if a.Key == "href" {
+            if (a.Key == "href" && rootDomainFilter(a.Val)) {
                 fmt.Println(a.Val)
                 break
             }
         }
     }
     for c := n.FirstChild; c != nil; c = c.NextSibling {
-        printLinks(c)
+        printLinksRecursive(c)
     }
+}
+
+func domainFilter(root string) func(link string) bool {
+	return func(link string) {
+		return strings.HasPrefix(link, "/") || strings.HasPrefix(link, root)
+	}
 }
