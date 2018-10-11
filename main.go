@@ -8,12 +8,12 @@ import (
 	"golang.org/x/net/html"
 	"bytes"
     "io/ioutil"
-    "regexp"
+    "strings"
 )
 
 func everythingHandler(w http.ResponseWriter, r *http.Request) {
     // fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
-    crawl("https://monzo.com/")
+    crawl("https://monzo.com")
 }
 
 func main() {
@@ -22,7 +22,8 @@ func main() {
 }
 
 func crawl(root string) {
-	var rootDomainFilter = domainFilter(root)
+	linkExtractorDomainOnly := getFullUrlInRoot(root)
+
 
 	resp, err := http.Get(root)
 	defer resp.Body.Close()
@@ -31,7 +32,7 @@ func crawl(root string) {
 		
 		doc, _ := html.Parse(bytes.NewReader(bodyAsByteArray))
 
-		printLinksRecursive(doc, rootDomainFilter)
+		printLinksRecursive(doc, linkExtractorDomainOnly)
 
 
 	} else{
@@ -40,23 +41,31 @@ func crawl(root string) {
 
 }
 
-func printLinksRecursive(n *html.Node, rootDomainFilter) {
+func printLinksRecursive(n *html.Node, urlExtractor func(link string) (fullUrl string, err string) ) {
 
     if n.Type == html.ElementNode && n.Data == "a" {
         for _, a := range n.Attr {
-            if (a.Key == "href" && rootDomainFilter(a.Val)) {
-                fmt.Println(a.Val)
+            if a.Key == "href" {
+                fullUrl, externalLinkErr := urlExtractor(a.Val)
+                if (externalLinkErr == "") {
+                	fmt.Println(fullUrl)
+                }
                 break
             }
         }
     }
     for c := n.FirstChild; c != nil; c = c.NextSibling {
-        printLinksRecursive(c)
+        printLinksRecursive(c, urlExtractor)
     }
 }
 
-func domainFilter(root string) func(link string) bool {
-	return func(link string) {
-		return strings.HasPrefix(link, "/") || strings.HasPrefix(link, root)
+func getFullUrlInRoot(root string) func(link string) (fullUrl string, err string) {
+	return func(link string) (fullUrl string, err string) {
+		if strings.HasPrefix(link, "/")  {
+			return root + link, ""
+		} else if strings.HasPrefix(link, root) {
+			return link, ""
+		}
+		return "", "error: external link"
 	}
 }
