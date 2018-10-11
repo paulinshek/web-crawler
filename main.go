@@ -28,25 +28,25 @@ func crawl() {
 		
 		doc, _ := html.Parse(bytes.NewReader(bodyAsByteArray))
 
-		var f func(*html.Node)
-		f = func(n *html.Node) {
-		    if n.Type == html.ElementNode && n.Data == "a" {
-		        for _, a := range n.Attr {
-		            if a.Key == "href" {
-		                fmt.Println(a.Val)
-		                break
-		            }
-		        }
-		    }
-		    for c := n.FirstChild; c != nil; c = c.NextSibling {
-		        f(c)
-		    }
-		}
-		f(doc)
+		printLinks(doc)
 
 
 	} else{
 		fmt.Printf("ERROR: %s", err)
 	}
 
+}
+
+func printLinks(n *html.Node) {
+    if n.Type == html.ElementNode && n.Data == "a" {
+        for _, a := range n.Attr {
+            if a.Key == "href" {
+                fmt.Println(a.Val)
+                break
+            }
+        }
+    }
+    for c := n.FirstChild; c != nil; c = c.NextSibling {
+        printLinks(c)
+    }
 }
