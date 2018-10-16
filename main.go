@@ -35,11 +35,15 @@ func everythingHandler(w http.ResponseWriter, r *http.Request) {
     }()
 
     go func() {
+        foundUrls := make(map[string]struct{})
         for resolvedUrl := range resolvedUrlsInDomain {
-            fmt.Println(resolvedUrl)
-            go func() { 
-                unexploredUrls <- resolvedUrl
-            }()
+            if _, ok := foundUrls[resolvedUrl]; !ok {
+                fmt.Println(resolvedUrl)
+                foundUrls[resolvedUrl] = struct{}{}
+                go func() { 
+                    unexploredUrls <- resolvedUrl
+                }()
+            }
         }
     }()
 }
