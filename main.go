@@ -12,12 +12,20 @@ import (
 )
 
 func everythingHandler(w http.ResponseWriter, r *http.Request) {
-    // fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
     domain := "https://monzo.com"
     domainResolver := filterOrResolve(domain)
 
+    unexploredUrls := make(chan string)
+    go func() {
+        unexploredUrls <- domain // start
+    }()
+
     foundHyperlinks := make(chan string)
-    go getAndPushHyperlinksToChannel(domain, foundHyperlinks)
+    go func() {
+        for unexploredUrl := range unexploredUrls {
+            getAndPushHyperlinksToChannel(unexploredUrl, foundHyperlinks)
+        }
+    }()
 
     resolvedUrlsInDomain := make(chan string)
     go func() {
@@ -29,9 +37,11 @@ func everythingHandler(w http.ResponseWriter, r *http.Request) {
     go func() {
         for resolvedUrl := range resolvedUrlsInDomain {
             fmt.Println(resolvedUrl)
+            go func() { 
+                unexploredUrls <- resolvedUrl
+            }()
         }
     }()
-
 }
 
 func main() {
