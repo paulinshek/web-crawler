@@ -13,7 +13,25 @@ import (
 
 func everythingHandler(w http.ResponseWriter, r *http.Request) {
     // fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
-    crawl("https://monzo.com")
+    domain := "https://monzo.com"
+    domainResolver := filterOrResolve(domain)
+
+    foundHyperlinks := make(chan string)
+    go getAndPushHyperlinksToChannel(domain, foundHyperlinks)
+
+    resolvedUrlsInDomain := make(chan string)
+    go func() {
+        for foundHyperlink := range foundHyperlinks {
+            domainResolver(foundHyperlink, resolvedUrlsInDomain)
+        }
+    }()
+
+    go func() {
+        for resolvedUrl := range resolvedUrlsInDomain {
+            fmt.Println(resolvedUrl)
+        }
+    }()
+
 }
 
 func main() {
@@ -21,51 +39,40 @@ func main() {
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func crawl(root string) {
-	linkExtractorDomainOnly := getFullUrlInRoot(root)
-
-
-	resp, err := http.Get(root)
+func getAndPushHyperlinksToChannel(url string, c chan string) {
+	resp, err := http.Get(url)
 	defer resp.Body.Close()
 	if err == nil {
 		bodyAsByteArray, _ := ioutil.ReadAll(resp.Body)
-		
 		doc, _ := html.Parse(bytes.NewReader(bodyAsByteArray))
 
-		printLinksRecursive(doc, linkExtractorDomainOnly)
-
+		pushHyperlinksToChannelRecursively(doc, c)
 
 	} else{
-		fmt.Printf("ERROR: %s", err)
+		fmt.Println("ERROR: %s", err)
 	}
 
 }
 
-func printLinksRecursive(n *html.Node, urlExtractor func(link string) (fullUrl string, err string) ) {
-
+func pushHyperlinksToChannelRecursively(n *html.Node, rawHyperlinkReceiver chan string) {
     if n.Type == html.ElementNode && n.Data == "a" {
         for _, a := range n.Attr {
             if a.Key == "href" {
-                fullUrl, externalLinkErr := urlExtractor(a.Val)
-                if (externalLinkErr == "") {
-                	fmt.Println(fullUrl)
-                }
-                break
+                rawHyperlinkReceiver <- a.Val
             }
         }
     }
     for c := n.FirstChild; c != nil; c = c.NextSibling {
-        printLinksRecursive(c, urlExtractor)
+        pushHyperlinksToChannelRecursively(c, rawHyperlinkReceiver)
     }
 }
 
-func getFullUrlInRoot(root string) func(link string) (fullUrl string, err string) {
-	return func(link string) (fullUrl string, err string) {
-		if strings.HasPrefix(link, "/")  {
-			return root + link, ""
-		} else if strings.HasPrefix(link, root) {
-			return link, ""
-		}
-		return "", "error: external link"
-	}
+func filterOrResolve(domain string) func(url string, c chan string) {
+    return func(url string, c chan string) {
+        if strings.HasPrefix(url, "/") {
+            c <- domain + url
+        } else if strings.HasPrefix(url, domain) {
+            c <- url
+        }
+    }
 }
