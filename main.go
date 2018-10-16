@@ -84,9 +84,13 @@ func pushHyperlinksToChannelRecursively(n *html.Node, rawHyperlinkReceiver chan 
 func filterOrResolve(domain string) func(url string, c chan string) {
     return func(url string, c chan string) {
         if strings.HasPrefix(url, "/") {
-            c <- domain + url
+            c <- removeFragmentIdentifier(domain + url)
         } else if strings.HasPrefix(url, domain) {
-            c <- url
+            c <- removeFragmentIdentifier(url)
         }
     }
+}
+
+func removeFragmentIdentifier(url string) string {
+    return strings.Split(url, "#")[0]
 }
