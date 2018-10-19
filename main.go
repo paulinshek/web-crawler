@@ -48,7 +48,7 @@ func crawlFrom(domain string, seenBefore map[string]struct{}, currLink string, w
 			crawlFrom(domain, seenBefore, resolvedUrl, w)
 		}
 	}
-	fmt.Println(w, currLink)
+	fmt.Fprintf(w, currLink)
 }
 
 func main() {
