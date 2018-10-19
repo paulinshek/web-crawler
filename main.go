@@ -16,7 +16,7 @@ func startTestServer() {
 		fmt.Fprintf(w, "<a href=\"/another-page\">my link</a>")
 	})
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "yayyy")
+		fmt.Fprintf(w, "/test")
 	})
 	log.Fatal(http.ListenAndServe(":8080", h))
 }
