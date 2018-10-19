@@ -13,10 +13,10 @@ import (
 func startTestServer() {
 	h := http.NewServeMux()
 	h.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"/another-page\">my link</a>")
+		fmt.Fprintf(w, "<a href=\"http://localhost:8080/test/another-page\">my link</a>")
 	})
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "/test")
+		fmt.Fprintf(w, "<a href=\"http://localhost:8080/test\">my link</a>")
 	})
 	log.Fatal(http.ListenAndServe(":8080", h))
 }
@@ -35,13 +35,13 @@ func startCrawling(w http.ResponseWriter, r *http.Request) {
 }
 
 func crawlFrom(domain string, seenBefore map[string]struct{}, currLink string, w http.ResponseWriter) {
-
 	foundHyperlinks := make(chan string)
 	go exploreForLinks(currLink, foundHyperlinks)
 	resolvedUrlsInDomain := make(chan string)
 	go filterExternalOrResolve(domain)(foundHyperlinks, resolvedUrlsInDomain)
 
 	for resolvedUrl := range resolvedUrlsInDomain {
+
 		if _, ok := seenBefore[resolvedUrl]; !ok { // if no seen before <-> not explored before
 			seenBefore[resolvedUrl] = struct{}{} // mark it as seen
 
