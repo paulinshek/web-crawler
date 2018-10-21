@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:c83558921001d3884e7dd035f3e3b47c3adca5adeb987ad660e02894a59b17aa"
+  name = "github.com/emicklei/dot"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4b3663f21c4131d0d8d0b441299a336abe402c2a"
+  version = "0.8.0"
+
+[[projects]]
   branch = "master"
   digest = "1:1a1ecfa7b54ca3f7a0115ab5c578d7d6a5d8b605839c549e80260468c42f8be7"
   name = "golang.org/x/net"
@@ -15,6 +23,9 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  input-imports = ["golang.org/x/net/html"]
+  input-imports = [
+    "github.com/emicklei/dot",
+    "golang.org/x/net/html",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1

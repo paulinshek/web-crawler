@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"github.com/emicklei/dot"
 )
 
 func startTestServer() {
@@ -21,46 +22,41 @@ func startTestServer() {
 	log.Fatal(http.ListenAndServe(":8080", h))
 }
 
-func startWebcrawlerServer() {
-	h := http.NewServeMux()
-	h.HandleFunc("/", startCrawling)
-	log.Fatal(http.ListenAndServe(":8000", h))
+func main() {
+
+	go startTestServer()
+
+	fmt.Printf(startWebcrawler("http://localhost:8080/test"))
+
 }
 
-func startCrawling(w http.ResponseWriter, r *http.Request) {
-	domain := "http://localhost:8080/test"
+func startWebcrawler(domain string) string {
 	seenBefore := make(map[string]struct{})
 	seenBefore[domain] = struct{}{}
-	crawlFrom(domain, seenBefore, domain, w)
+
+	g := dot.NewGraph(dot.Directed)
+	startNode := g.Node(domain)
+
+	crawlFrom(domain, seenBefore, startNode, domain, g)
+
+	return g.String()
 }
 
-func crawlFrom(domain string, seenBefore map[string]struct{}, currLink string, w http.ResponseWriter) {
+func crawlFrom(domain string, seenBefore map[string]struct{}, parentNode dot.Node, currLink string, g *dot.Graph) {
 	foundHyperlinks := make(chan string)
 	go exploreForLinks(currLink, foundHyperlinks)
 	resolvedUrlsInDomain := make(chan string)
 	go filterExternalOrResolve(domain)(foundHyperlinks, resolvedUrlsInDomain)
 
 	for resolvedUrl := range resolvedUrlsInDomain {
+		
+		currNode := g.Node(resolvedUrl)
+		g.Edge(parentNode, currNode)
 
 		if _, ok := seenBefore[resolvedUrl]; !ok { // if no seen before <-> not explored before
 			seenBefore[resolvedUrl] = struct{}{} // mark it as seen
-
-			crawlFrom(domain, seenBefore, resolvedUrl, w)
+			crawlFrom(domain, seenBefore, currNode, resolvedUrl, g)
 		}
-	}
-	fmt.Fprintf(w, currLink)
-}
-
-func main() {
-	go startTestServer()
-
-	go startWebcrawlerServer()
-
-	resp, err := http.Get("http://localhost:8000/")
-	if err == nil {
-		defer resp.Body.Close()
-		bodyAsByteArray, _ := ioutil.ReadAll(resp.Body)
-		fmt.Println(string(bodyAsByteArray[:]))
 	}
 }
 
@@ -107,7 +103,3 @@ func filterExternalOrResolve(domain string) func(in chan string, out chan string
 func removeFragmentIdentifier(url string) string {
 	return strings.Split(url, "#")[0]
 }
-
-// BUG printed urls are not completely unique
-// TODO parent link should also be pushed to channel so that we can create a graph from this Data
-// TODO actually return something
