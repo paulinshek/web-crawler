@@ -12,17 +12,6 @@ import (
 	"os"
 )
 
-func startTestServer() {
-	h := http.NewServeMux()
-	h.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/test/another-page\">my link</a>")
-	})
-	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/test\">my link</a>")
-	})
-	log.Fatal(http.ListenAndServe(":8080", h))
-}
-
 func main() {
 
 	go startTestServer()
