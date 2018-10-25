@@ -1,4 +1,5 @@
 
 # Usage
 
-go run main.go | dot -Tpng  > test.png && open test.png
+go build
+./web-crawler https://www.monzo.com/careers | dot -Tsvg  > site-map.svg

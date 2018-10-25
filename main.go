@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"github.com/emicklei/dot"
+	"os"
 )
 
 func startTestServer() {
@@ -26,7 +27,8 @@ func main() {
 
 	go startTestServer()
 
-	fmt.Printf(startWebcrawler("http://localhost:8080/test"))
+	root := os.Args[1]
+	fmt.Printf(startWebcrawler(root))
 
 }
 
