@@ -3,19 +3,15 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/emicklei/dot"
 	"golang.org/x/net/html"
 	"io/ioutil"
-	"log"
 	"net/http"
-	"strings"
-	"github.com/emicklei/dot"
 	"os"
+	"strings"
 )
 
 func main() {
-
-	go startTestServer()
-
 	root := os.Args[1]
 	fmt.Printf(startWebcrawler(root))
 
@@ -40,7 +36,7 @@ func crawlFrom(domain string, seenBefore map[string]struct{}, parentNode dot.Nod
 	go filterExternalOrResolve(domain)(foundHyperlinks, resolvedUrlsInDomain)
 
 	for resolvedUrl := range resolvedUrlsInDomain {
-		
+
 		currNode := g.Node(resolvedUrl)
 		g.Edge(parentNode, currNode)
 

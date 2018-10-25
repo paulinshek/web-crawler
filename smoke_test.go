@@ -1,10 +1,10 @@
 package main
 
 import (
-	"testing"
-	"net/http"
 	"fmt"
+	"net/http"
 	"strings"
+	"testing"
 )
 
 func TestOnePage(t *testing.T) {
@@ -23,9 +23,9 @@ func TestOnePage(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
 	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;}"
 
-    if expectedDotOutput != actualDotOutput {
-       t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
-    }
+	if expectedDotOutput != actualDotOutput {
+		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
+	}
 }
 
 func TestOneTwoPages(t *testing.T) {
@@ -44,9 +44,9 @@ func TestOneTwoPages(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
 	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;}"
 
-    if expectedDotOutput != actualDotOutput {
-       t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
-    }
+	if expectedDotOutput != actualDotOutput {
+		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
+	}
 
 }
 
@@ -66,8 +66,8 @@ func TestOneTwoPagesWithLoop(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
 	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;}"
 
-    if expectedDotOutput != actualDotOutput {
-       t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
-    }
+	if expectedDotOutput != actualDotOutput {
+		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
+	}
 
 }
