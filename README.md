@@ -2,4 +2,4 @@
 # Usage
 
 go build
-./web-crawler https://www.monzo.com/careers | dot -Tsvg  > site-map.svg
+./web-crawler WEBSITE_URL | dot -Tsvg  > site-map.svg
