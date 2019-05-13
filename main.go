@@ -1,73 +1,51 @@
 package main
 
 import (
-	// "bytes"
 	"fmt"
-	// "github.com/emicklei/dot"
+	"github.com/emicklei/dot"
 	"golang.org/x/net/html"
     "log"
 	"net/http"
-	// "strings"
+	"strings"
 )
 
 func main() {
 	h := http.NewServeMux()
     h.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "<html><body><a href=\"http://localhost:8080/test/another-page\">my link</a></body></html>")
+        fmt.Fprintf(w, "<html><a href=\"/test/another-page\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
     })
     h.HandleFunc("/test/another-page", func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "<html><a href=\"http://localhost:8080/test\">my link</a></html>")
+        fmt.Fprintf(w, "<a href=\"http://localhost:8080/test\">my link</a>")
     })
     go http.ListenAndServe(":8080", h)
 
-	startWebcrawler("http://localhost:8080/test/")
+	startWebcrawler("http://localhost:8080/test")
 
 }
 
 func startWebcrawler(domain string) string {
-	// seenBefore := make(map[string]struct{})
-	// seenBefore[domain] = struct{}{}
+    cLinkGetter := make(chan string)
+    cDomainPrefixer := make(chan string)
+    cDomainFilterer := make(chan string)
+    cFoundLinks := make(chan string)
+    cGraphBuilder := make(chan string)
+    cResultGraph := make(chan string)
 
-	// g := dot.NewGraph(dot.Directed)
-	// startNode := g.Node(domain)
-
-	// crawlFrom(domain, seenBefore, startNode, domain, g)
-
-	// return g.String()
-
-    startLink := make(chan string)
-    foundLinks := make(chan string)
-
-    log.Println("Starting linkGetter worker")
-    go linkGetter(startLink, foundLinks)
-    log.Println("linkGetter worker started")
+    go linkGetter(cLinkGetter, cDomainPrefixer)
+    go domainPrefixer("http://localhost:8080", cDomainPrefixer, cDomainFilterer)
+    go domainFilterer("http://localhost:8080", cDomainFilterer, cFoundLinks)
+    // feed back into first channel to create a cycle
+    // and also feed to graphBuilder which collects results
+    go channelInterceptor(cFoundLinks, cGraphBuilder, cLinkGetter) // also does some logging
+    go graphBuilder(cGraphBuilder, cResultGraph)
 
     log.Println("pushing link to startLink channel")
-    startLink <- domain
+    cLinkGetter <- domain
 
-    for foundLink := range(foundLinks) {
-        log.Printf(foundLink)
-    }
-    return ""
+    resultGraph := <- cResultGraph
+    log.Printf("FINAL RESULT: %s", resultGraph)
+    return resultGraph
 }
-
-// func crawlFrom(domain string, seenBefore map[string]struct{}, parentNode dot.Node, currLink string, g *dot.Graph) {
-// 	foundHyperlinks := make(chan string)
-// 	go exploreForLinks(currLink, foundHyperlinks)
-// 	resolvedUrlsInDomain := make(chan string)
-// 	go filterExternalOrResolve(domain)(foundHyperlinks, resolvedUrlsInDomain)
-
-// 	for resolvedUrl := range resolvedUrlsInDomain {
-
-// 		currNode := g.Node(resolvedUrl)
-// 		g.Edge(parentNode, currNode)
-
-// 		if _, ok := seenBefore[resolvedUrl]; !ok { // if no seen before <-> not explored before
-// 			seenBefore[resolvedUrl] = struct{}{} // mark it as seen
-// 			crawlFrom(domain, seenBefore, currNode, resolvedUrl, g)
-// 		}
-// 	}
-// }
 
 func linkGetter(in chan string, out chan string) {
 	for link := range in {
@@ -80,14 +58,14 @@ func linkGetter(in chan string, out chan string) {
 			for {
 				tokenType := tokenizer.Next()
                 if (tokenType == html.ErrorToken) {
-                    return
+                    break
                 }
-                log.Println(tokenType)
-				if tokenType == html.StartTagToken { // for each <a> tag
-                    log.Println("Start tag token found")
+                log.Printf("token type: %s", tokenType)
+				if tokenType == html.StartTagToken { 
                     token := tokenizer.Token()
-					if token.Data == "a" {
-                        log.Println("A tag found")
+                    log.Printf("token: %s", token)
+                    log.Printf("token data: %s", token.Data)
+					if token.Data == "a" { // for each <a> tag
 						for i := range token.Attr {// find the href attribute
                             log.Printf("Available key: %s", token.Attr[i].Key)
 							if token.Attr[i].Key == "href" {
@@ -103,50 +81,76 @@ func linkGetter(in chan string, out chan string) {
 			log.Println("ERROR: %s", err)
 		}
 	}
-
+    close(out)
 }
 
-// func domainPrefixer(domain string)(in chan string, out chan string) {
-// 	return func(in chan string, out chan string) {
-// 		for url := range in {
-// 			if strings.HasPrefix(url, "/") {
-// 				out <- domain + url
-// 			} else {
-// 				out <- url
-// 			}
-// 		}
-// 		close(out)
-// 	}
-// }
+func domainPrefixer(domain string, in chan string, out chan string) {
+	for url := range in {
+		if strings.HasPrefix(url, "/") {
+			out <- domain + url
+		} else {
+			out <- url
+		}
+	}
+	close(out)
+}
 
-// func domainFilterer(domain string)(in chan string, out chan string) {
-// 	return func(in chan string, out chan string) {
-// 		for url := range in {
-// 			if strings.HasPrefix(url, domain) {
-// 				out <- url
-// 			} else {
-// 				// send another signal somehow
-// 			}
-// 		}
-// 		close(out)
-// 	}
-// }
+func domainFilterer(domain string, in chan string, out chan string) {
+	for url := range in {
+		if strings.HasPrefix(url, domain) {
+			out <- url
+		} else {
+			// send another signal somehow
+		}
+	}
+	close(out)
+}
 
-// func linkTidier(in chan string, out chan string) {
-// 	for url := range in {
-// 		out <- strings.Split(url, "#")[0] // remove fragment identifier
-// 	}
-// 	close(out)
-// }
+func linkTidier(in chan string, out chan string) {
+	for url := range in {
+		out <- strings.Split(url, "#")[0] // remove fragment identifier
+	}
+	close(out)
+}
 
 // func seenBeforeFilterer(in chan string, out chan string) {
 // 	// keep a map of seen urls
-// 	seenBefore := make(map[string]struct{})
+    // seenBefore := make(map[string]struct{})
+    // seenBefore[domain] = struct{}{}
 // }
 
-// func graphBuilder(in chan string, out chan string) {
+func graphBuilder(in chan string, out chan string) {
+    g := dot.NewGraph(dot.Directed)
+    for url := range in {
+        g.Node(url)
+    }
+    out <- g.String()
+    close(out)
+}
 
-// }
+
+func channelInterceptor(in chan string, out1 chan string, out2 chan string) {
+    // whilst loop detection has not been implemented
+    // end artificially
+    maxItems := 2
+    count := 0
+    for item := range(in) {
+        count++
+        log.Printf("itercepted item: %s", item)
+        go func() {
+            out1 <- item
+        }()
+        go func() {
+            out2 <- item
+        }()
+        if count == maxItems {
+            break
+        }
+    }
+    <-in // manually filter out seen link
+    close(out1)
+    close(out2)
+}
 
 // type possibleLink struct {
 // 	parentNode dot.Node
