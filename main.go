@@ -25,10 +25,10 @@ func main() {
 
 func startWebcrawler(domain string) string {
 	cLinkGetter := make(chan string)
-	cDomainPrefixer := make(chan string)
-	cDomainFilterer := make(chan string)
-	cFoundLinks := make(chan string)
-	cGraphBuilder := make(chan string)
+	cDomainPrefixer := make(chan parentChildPair)
+	cDomainFilterer := make(chan parentChildPair)
+	cFoundLinks := make(chan parentChildPair)
+	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan string)
 
 	go linkGetter(cLinkGetter, cDomainPrefixer)
@@ -39,15 +39,20 @@ func startWebcrawler(domain string) string {
 	go channelInterceptor(cFoundLinks, cGraphBuilder, cLinkGetter) // also does some logging
 	go graphBuilder(cGraphBuilder, cResultGraph)
 
-	log.Println("pushing link to startLink channel")
-	cLinkGetter <- domain
+	log.Println("pushing link to first channel")
+	cFoundLinks <- parentChildPair{childLink: domain}
 
 	resultGraph := <-cResultGraph
 	log.Printf("FINAL RESULT: %s", resultGraph)
 	return resultGraph
 }
 
-func linkGetter(in chan string, out chan string) {
+type parentChildPair struct {
+	parentLink string
+	childLink string
+}
+
+func linkGetter(in chan string, out chan parentChildPair) {
 	for link := range in {
 		log.Printf("link received %s", link)
 		resp, err := http.Get(link) // GET
@@ -70,7 +75,7 @@ func linkGetter(in chan string, out chan string) {
 							log.Printf("Available key: %s", token.Attr[i].Key)
 							if token.Attr[i].Key == "href" {
 								go func() {
-									out <- token.Attr[i].Val // and push to out channel
+									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val}
 								}()
 							}
 						}
@@ -84,21 +89,20 @@ func linkGetter(in chan string, out chan string) {
 	close(out)
 }
 
-func domainPrefixer(domain string, in chan string, out chan string) {
-	for url := range in {
-		if strings.HasPrefix(url, "/") {
-			out <- domain + url
-		} else {
-			out <- url
+func domainPrefixer(domain string, in chan parentChildPair, out chan parentChildPair) {
+	for parentChild := range in {
+		if strings.HasPrefix(parentChild.childLink, "/") {
+			parentChild.childLink = domain + parentChild.childLink
 		}
+		out <- parentChild
 	}
 	close(out)
 }
 
-func domainFilterer(domain string, in chan string, out chan string) {
-	for url := range in {
-		if strings.HasPrefix(url, domain) {
-			out <- url
+func domainFilterer(domain string, in chan parentChildPair, out chan parentChildPair) {
+	for parentChild := range in {
+		if strings.HasPrefix(parentChild.childLink, domain) {
+			out <- parentChild
 		} else {
 			// send another signal somehow
 		}
@@ -106,29 +110,36 @@ func domainFilterer(domain string, in chan string, out chan string) {
 	close(out)
 }
 
-func linkTidier(in chan string, out chan string) {
-	for url := range in {
-		out <- strings.Split(url, "#")[0] // remove fragment identifier
+func linkTidier(in chan parentChildPair, out chan parentChildPair) {
+	for parentChild := range in {
+		withoutFragmentIdentifier := strings.Split(parentChild.childLink, "#")[0]
+		parentChild.childLink = withoutFragmentIdentifier
+		out <- parentChild
 	}
 	close(out)
 }
 
-// func seenBeforeFilterer(in chan string, out chan string) {
-// 	// keep a map of seen urls
-// seenBefore := make(map[string]struct{})
-// seenBefore[domain] = struct{}{}
-// }
-
-func graphBuilder(in chan string, out chan string) {
+func graphBuilder(in chan parentChildPair, out chan string) {
 	g := dot.NewGraph(dot.Directed)
-	for url := range in {
-		g.Node(url)
+	seenBefore := make(map[string]dot.Node)
+
+	for parentChild := range in {
+		// if seen before then get the already existing node instead
+		// and don't need to go back round ie. merge channelInterCeptor and graph builder
+		childNode := g.Node(parentChild.childLink)
+		seenBefore[parentChild.childLink] = childNode
+		// if (exists parent) then add in the edge
+		parentNode, found := seenBefore[parentChild.parentLink]
+		if found {
+			g.Edge(parentNode, childNode)
+		}
+		// somehow need to work out when everything's been explored
 	}
 	out <- g.String()
 	close(out)
 }
 
-func channelInterceptor(in chan string, out1 chan string, out2 chan string) {
+func channelInterceptor(in chan parentChildPair, outToGraphBuilder chan parentChildPair, outBackToLinkGetter chan string) {
 	// whilst loop detection has not been implemented
 	// end artificially
 	maxItems := 2
@@ -137,26 +148,16 @@ func channelInterceptor(in chan string, out1 chan string, out2 chan string) {
 		count++
 		log.Printf("itercepted item: %s", item)
 		go func() {
-			out1 <- item
+			outToGraphBuilder <- item
 		}()
 		go func() {
-			out2 <- item
+			outBackToLinkGetter <- item.childLink
 		}()
 		if count == maxItems {
 			break
 		}
 	}
 	<-in // manually filter out seen link
-	close(out1)
-	close(out2)
+	close(outToGraphBuilder)
+	close(outBackToLinkGetter)
 }
-
-// type possibleLink struct {
-// 	parentNode dot.Node
-// 	String possibleUrl
-// }
-
-// type goodLink struct {
-// 	parentNode dot.Node
-// 	goodLink dot.Node
-// }
