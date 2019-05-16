@@ -27,20 +27,16 @@ func startWebcrawler(domain string) string {
 	cLinkGetter := make(chan string)
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
-	cFoundLinks := make(chan parentChildPair)
 	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan string)
 
 	go linkGetter(cLinkGetter, cDomainPrefixer)
 	go domainPrefixer("http://localhost:8080", cDomainPrefixer, cDomainFilterer)
-	go domainFilterer("http://localhost:8080", cDomainFilterer, cFoundLinks)
-	// feed back into first channel to create a cycle
-	// and also feed to graphBuilder which collects results
-	go channelInterceptor(cFoundLinks, cGraphBuilder, cLinkGetter) // also does some logging
-	go graphBuilder(cGraphBuilder, cResultGraph)
+	go domainFilterer("http://localhost:8080", cDomainFilterer, cGraphBuilder)
+	go graphBuilder(cGraphBuilder, cLinkGetter, cResultGraph)
 
-	log.Println("pushing link to first channel")
-	cFoundLinks <- parentChildPair{childLink: domain}
+	log.Println("pushing link to graphbuilder to make the first node")
+	cGraphBuilder <- parentChildPair{childLink: domain}
 
 	resultGraph := <-cResultGraph
 	log.Printf("FINAL RESULT: %s", resultGraph)
@@ -119,11 +115,18 @@ func linkTidier(in chan parentChildPair, out chan parentChildPair) {
 	close(out)
 }
 
-func graphBuilder(in chan parentChildPair, out chan string) {
+func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, finalOutput chan string) {
 	g := dot.NewGraph(dot.Directed)
 	seenBefore := make(map[string]dot.Node)
 
+	// whilst loop detection has not been implemented
+	// end artificially
+	maxItems := 3
+	count := 0
 	for parentChild := range in {
+		count++
+		log.Printf("itercepted parentChild: %s", parentChild)
+
 		// first sort out node creation
 		// if child seen before then get the already existing node instead
 		childNode, childSeenBefore := seenBefore[parentChild.childLink]
@@ -132,6 +135,7 @@ func graphBuilder(in chan parentChildPair, out chan string) {
 		} else {
 			childNode = g.Node(parentChild.childLink)
 			seenBefore[parentChild.childLink] = childNode
+			outBackToLinkGetter <- parentChild.childLink
 		}
 
 		// now add an edge if needed
@@ -141,30 +145,12 @@ func graphBuilder(in chan parentChildPair, out chan string) {
 		}
 
 		// TODO somehow need to work out when everything's been explored
-	}
-	out <- g.String()
-	close(out)
-}
-
-func channelInterceptor(in chan parentChildPair, outToGraphBuilder chan parentChildPair, outBackToLinkGetter chan string) {
-	// whilst loop detection has not been implemented
-	// end artificially
-	maxItems := 3
-	count := 0
-	for item := range in {
-		count++
-		log.Printf("itercepted item: %s", item)
-		go func() {
-			outToGraphBuilder <- item
-		}()
-		go func() {
-			outBackToLinkGetter <- item.childLink
-		}()
 		if count == maxItems {
 			break
 		}
 	}
-	<-in // manually filter out seen link
-	close(outToGraphBuilder)
 	close(outBackToLinkGetter)
+	
+	finalOutput <- g.String()
+	close(finalOutput)
 }
