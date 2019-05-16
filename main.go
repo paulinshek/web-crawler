@@ -124,16 +124,23 @@ func graphBuilder(in chan parentChildPair, out chan string) {
 	seenBefore := make(map[string]dot.Node)
 
 	for parentChild := range in {
-		// if seen before then get the already existing node instead
-		// and don't need to go back round ie. merge channelInterCeptor and graph builder
-		childNode := g.Node(parentChild.childLink)
-		seenBefore[parentChild.childLink] = childNode
-		// if (exists parent) then add in the edge
-		parentNode, found := seenBefore[parentChild.parentLink]
-		if found {
+		// first sort out node creation
+		// if child seen before then get the already existing node instead
+		childNode, childSeenBefore := seenBefore[parentChild.childLink]
+		if childSeenBefore {
+			// TODO don't need to go back round ie. merge channelInterceptor and graph builder
+		} else {
+			childNode = g.Node(parentChild.childLink)
+			seenBefore[parentChild.childLink] = childNode
+		}
+
+		// now add an edge if needed
+		if len(parentChild.parentLink) > 0 {
+			parentNode, _ := seenBefore[parentChild.parentLink]
 			g.Edge(parentNode, childNode)
 		}
-		// somehow need to work out when everything's been explored
+
+		// TODO somehow need to work out when everything's been explored
 	}
 	out <- g.String()
 	close(out)
@@ -142,7 +149,7 @@ func graphBuilder(in chan parentChildPair, out chan string) {
 func channelInterceptor(in chan parentChildPair, outToGraphBuilder chan parentChildPair, outBackToLinkGetter chan string) {
 	// whilst loop detection has not been implemented
 	// end artificially
-	maxItems := 2
+	maxItems := 3
 	count := 0
 	for item := range in {
 		count++
