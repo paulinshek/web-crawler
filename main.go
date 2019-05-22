@@ -11,28 +11,30 @@ import (
 
 func main() {
 	h := http.NewServeMux()
-	h.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<html><a href=\"/test/another-page\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
+	h.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<html><a href=\"/another-page#56765\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
 	})
-	h.HandleFunc("/test/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/test\">my link</a>")
+	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link</a>")
 	})
 	go http.ListenAndServe(":8080", h)
 
-	startWebcrawler("http://localhost:8080/test")
-
+	startWebcrawler("http://localhost:8080/")
+	//startWebcrawler("http://monzo.com")
 }
 
 func startWebcrawler(domain string) string {
 	cLinkGetter := make(chan string)
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
+	cLinkTidier := make(chan parentChildPair)
 	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan string)
 
 	go linkGetter(cLinkGetter, cDomainPrefixer)
-	go domainPrefixer("http://localhost:8080", cDomainPrefixer, cDomainFilterer)
-	go domainFilterer("http://localhost:8080", cDomainFilterer, cGraphBuilder)
+	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
+	go domainFilterer(domain, cDomainFilterer, cLinkTidier)
+	go linkTidier(cLinkTidier, cGraphBuilder)
 	go graphBuilder(cGraphBuilder, cLinkGetter, cResultGraph)
 
 	log.Println("pushing link to graphbuilder to make the first node")
@@ -44,8 +46,9 @@ func startWebcrawler(domain string) string {
 }
 
 type parentChildPair struct {
-	parentLink string
-	childLink string
+	parentLink                 string
+	childLink                  string
+	numberOfChildrenFoundSoFar int
 }
 
 func linkGetter(in chan string, out chan parentChildPair) {
@@ -56,6 +59,7 @@ func linkGetter(in chan string, out chan parentChildPair) {
 		if err == nil {
 			defer resp.Body.Close()
 			tokenizer := html.NewTokenizer(resp.Body)
+			childrenCount := 0
 			for {
 				tokenType := tokenizer.Next()
 				if tokenType == html.ErrorToken {
@@ -70,8 +74,9 @@ func linkGetter(in chan string, out chan parentChildPair) {
 						for i := range token.Attr { // find the href attribute
 							log.Printf("Available key: %s", token.Attr[i].Key)
 							if token.Attr[i].Key == "href" {
+								childrenCount++
 								go func() {
-									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val}
+									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val, numberOfChildrenFoundSoFar: childrenCount}
 								}()
 							}
 						}
@@ -100,7 +105,7 @@ func domainFilterer(domain string, in chan parentChildPair, out chan parentChild
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			out <- parentChild
 		} else {
-			// send another signal somehow
+			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: ""}
 		}
 	}
 	close(out)
@@ -115,42 +120,66 @@ func linkTidier(in chan parentChildPair, out chan parentChildPair) {
 	close(out)
 }
 
+type childrenCount struct {
+	numberOfFoundChildren    int
+	numberOfExploredChildren int
+}
+
 func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, finalOutput chan string) {
 	g := dot.NewGraph(dot.Directed)
 	seenBefore := make(map[string]dot.Node)
+	childrenCountMap := make(map[string]childrenCount)
 
-	// whilst loop detection has not been implemented
-	// end artificially
-	maxItems := 3
-	count := 0
 	for parentChild := range in {
-		count++
 		log.Printf("itercepted parentChild: %s", parentChild)
+
+		// parentLink not null
+		// => not root node
+		// => came from exploring some child (since root gets fed in as a child)
+		// => there exists an extry in childrenCountMap (since root gets fed into graphBuilder to start)
+		if len(parentChild.parentLink) > 0 {
+			// update the counts
+			oldCounts := childrenCountMap[parentChild.parentLink]
+			var numberOfFoundChildren int = oldCounts.numberOfFoundChildren
+			if parentChild.numberOfChildrenFoundSoFar > numberOfFoundChildren {
+				numberOfFoundChildren = parentChild.numberOfChildrenFoundSoFar
+			}
+			newCounts := childrenCount{numberOfFoundChildren: numberOfFoundChildren, numberOfExploredChildren: oldCounts.numberOfExploredChildren + 1}
+			childrenCountMap[parentChild.parentLink] = newCounts
+		}
 
 		// first sort out node creation
 		// if child seen before then get the already existing node instead
 		childNode, childSeenBefore := seenBefore[parentChild.childLink]
-		if childSeenBefore {
-			// TODO don't need to go back round ie. merge channelInterceptor and graph builder
+		if childSeenBefore || len(parentChild.childLink) == 0 || parentChild.parentLink == parentChild.childLink {
+			// don't need to go back round
 		} else {
 			childNode = g.Node(parentChild.childLink)
 			seenBefore[parentChild.childLink] = childNode
+			childrenCountMap[parentChild.childLink] = childrenCount{numberOfFoundChildren: -1, numberOfExploredChildren: 0}
 			outBackToLinkGetter <- parentChild.childLink
+
+			// now add an edge if needed
+			if len(parentChild.parentLink) > 0 {
+				parentNode, _ := seenBefore[parentChild.parentLink]
+				g.Edge(parentNode, childNode)
+			}
 		}
 
-		// now add an edge if needed
-		if len(parentChild.parentLink) > 0 {
-			parentNode, _ := seenBefore[parentChild.parentLink]
-			g.Edge(parentNode, childNode)
+		// check if everything has been explored
+		var allExplored bool = true
+		for _, value := range childrenCountMap {
+			allExplored = allExplored &&
+				value.numberOfExploredChildren == value.numberOfFoundChildren &&
+				value.numberOfFoundChildren >= 0
 		}
-
-		// TODO somehow need to work out when everything's been explored
-		if count == maxItems {
+		log.Printf("childrenCountMap %s", childrenCountMap)
+		if allExplored {
 			break
 		}
 	}
 	close(outBackToLinkGetter)
-	
+
 	finalOutput <- g.String()
 	close(finalOutput)
 }
