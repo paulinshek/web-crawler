@@ -15,15 +15,15 @@ func main() {
 		fmt.Fprintf(w, "<html><a href=\"/another-page#56765\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
 	})
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link</a>")
+		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link back</a><a href=\"http://localhost:8080/another-page\">my link to myself</a>")
 	})
 	go http.ListenAndServe(":8080", h)
 
-	startWebcrawler("http://localhost:8080/")
-	//startWebcrawler("http://monzo.com")
+	startWebcrawler("http://localhost:8080/", "http://localhost:8080")
+	// startWebcrawler("http://monzo.com/", "http://monzo.com")
 }
 
-func startWebcrawler(domain string) string {
+func startWebcrawler(start string, domain string) string {
 	cLinkGetter := make(chan string)
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
@@ -38,7 +38,7 @@ func startWebcrawler(domain string) string {
 	go graphBuilder(cGraphBuilder, cLinkGetter, cResultGraph)
 
 	log.Println("pushing link to graphbuilder to make the first node")
-	cGraphBuilder <- parentChildPair{childLink: domain}
+	cGraphBuilder <- parentChildPair{childLink: start}
 
 	resultGraph := <-cResultGraph
 	log.Printf("FINAL RESULT: %s", resultGraph)
