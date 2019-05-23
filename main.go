@@ -15,7 +15,10 @@ func main() {
 		fmt.Fprintf(w, "<html><a href=\"/another-page#56765\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
 	})
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link back</a><a href=\"http://localhost:8080/another-page\">my link to myself</a>")
+		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link back</a><a href=\"http://localhost:8080/another-page\">my link to myself</a><a href=\"http://localhost:8080/no-links\">link to a page with no links</a>")
+	})
+	h.HandleFunc("/no-links", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "")
 	})
 	go http.ListenAndServe(":8080", h)
 
@@ -51,15 +54,30 @@ type parentChildPair struct {
 	numberOfChildrenFoundSoFar int
 }
 
+func isHtmlContent(contentTypeList []string) bool {
+	for i := range contentTypeList {
+		log.Printf("contentType: %s", contentTypeList[i])
+		if strings.Contains(contentTypeList[i], "text/html") {
+			return true
+		}
+	}
+	return false
+}
+
 func linkGetter(in chan string, out chan parentChildPair) {
 	for link := range in {
 		log.Printf("link received %s", link)
 		resp, err := http.Get(link) // GET
 		log.Printf("have GOT from %s", link)
-		if err == nil {
-			defer resp.Body.Close()
-			tokenizer := html.NewTokenizer(resp.Body)
+
+		isHtml := isHtmlContent(resp.Header["Content-Type"])
+		log.Printf("isHtml: %s", isHtml)
+		if err == nil && isHtml {
 			childrenCount := 0
+			defer resp.Body.Close()
+
+
+			tokenizer := html.NewTokenizer(resp.Body)
 			for {
 				tokenType := tokenizer.Next()
 				if tokenType == html.ErrorToken {
@@ -83,8 +101,15 @@ func linkGetter(in chan string, out chan parentChildPair) {
 					}
 				}
 			}
-		} else {
+		}
+		if err != nil {
 			log.Println("ERROR: %s", err)
+		}
+		if !isHtml {
+			log.Println("%s is not html", link)
+			go func() {
+				out <- parentChildPair{parentLink: link, numberOfChildrenFoundSoFar: 0}
+			}()
 		}
 	}
 	close(out)
@@ -105,7 +130,7 @@ func domainFilterer(domain string, in chan parentChildPair, out chan parentChild
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			out <- parentChild
 		} else {
-			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: ""}
+			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: "", numberOfChildrenFoundSoFar: parentChild.numberOfChildrenFoundSoFar}
 		}
 	}
 	close(out)
@@ -133,12 +158,8 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 	for parentChild := range in {
 		log.Printf("itercepted parentChild: %s", parentChild)
 
-		// parentLink not null
-		// => not root node
-		// => came from exploring some child (since root gets fed in as a child)
-		// => there exists an extry in childrenCountMap (since root gets fed into graphBuilder to start)
-		if len(parentChild.parentLink) > 0 {
-			// update the counts
+		// update the counts
+		if len(parentChild.parentLink) > 0 && len(parentChild.childLink) > 0 {
 			oldCounts := childrenCountMap[parentChild.parentLink]
 			var numberOfFoundChildren int = oldCounts.numberOfFoundChildren
 			if parentChild.numberOfChildrenFoundSoFar > numberOfFoundChildren {
@@ -146,14 +167,22 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 			}
 			newCounts := childrenCount{numberOfFoundChildren: numberOfFoundChildren, numberOfExploredChildren: oldCounts.numberOfExploredChildren + 1}
 			childrenCountMap[parentChild.parentLink] = newCounts
+			
+		} else if len(parentChild.parentLink) > 0 && len(parentChild.childLink) == 0 {
+			oldCounts := childrenCountMap[parentChild.parentLink]
+			var numberOfFoundChildren int = oldCounts.numberOfFoundChildren
+			if parentChild.numberOfChildrenFoundSoFar > numberOfFoundChildren {
+				numberOfFoundChildren = parentChild.numberOfChildrenFoundSoFar
+			}
+			newCounts := childrenCount{numberOfFoundChildren: numberOfFoundChildren, numberOfExploredChildren: oldCounts.numberOfExploredChildren}
+			childrenCountMap[parentChild.parentLink] = newCounts
 		}
-
 		// first sort out node creation
 		// if child seen before then get the already existing node instead
 		childNode, childSeenBefore := seenBefore[parentChild.childLink]
 		if childSeenBefore || len(parentChild.childLink) == 0 || parentChild.parentLink == parentChild.childLink {
 			// don't need to go back round
-		} else {
+		} else if (len(parentChild.childLink) > 0) {
 			childNode = g.Node(parentChild.childLink)
 			seenBefore[parentChild.childLink] = childNode
 			childrenCountMap[parentChild.childLink] = childrenCount{numberOfFoundChildren: -1, numberOfExploredChildren: 0}
