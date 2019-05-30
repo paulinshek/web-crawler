@@ -17,7 +17,7 @@ func TestOnePage(t *testing.T) {
 	})
 	go http.ListenAndServe(":8080", h)
 
-	actualDotOutput := startWebcrawler("http://localhost:8080")
+	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -38,7 +38,7 @@ func TestOneTwoPages(t *testing.T) {
 	})
 	go http.ListenAndServe(":8080", h)
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/test")
+	actualDotOutput := startWebcrawler("http://localhost:8080/test", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -60,7 +60,7 @@ func TestOneTwoPagesWithLoop(t *testing.T) {
 	})
 	go http.ListenAndServe(":8080", h)
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/test")
+	actualDotOutput := startWebcrawler("http://localhost:8080/test", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)

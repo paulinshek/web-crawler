@@ -84,7 +84,7 @@ func linkGetter(in chan string, out chan parentChildPair) {
 				}
 			}
 		} else {
-			log.Println("ERROR: %s", err)
+			log.Printf("ERROR: %s", err)
 		}
 	}
 	close(out)
@@ -105,7 +105,7 @@ func domainFilterer(domain string, in chan parentChildPair, out chan parentChild
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			out <- parentChild
 		} else {
-			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: "", numberOfChildrenFoundSoFar: parentChild.numberOfChildrenFoundSoFar }
+			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: "", numberOfChildrenFoundSoFar: parentChild.numberOfChildrenFoundSoFar}
 		}
 	}
 	close(out)
@@ -131,7 +131,7 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 	childrenCountMap := make(map[string]childrenCount)
 
 	for parentChild := range in {
-		log.Printf("itercepted parentChild: %s", parentChild)
+		log.Printf("itercepted parentChild: %#v", parentChild)
 
 		// parentLink not null
 		// => not root node
@@ -173,7 +173,7 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 				value.numberOfExploredChildren == value.numberOfFoundChildren &&
 				value.numberOfFoundChildren >= 0
 		}
-		log.Printf("childrenCountMap %s", childrenCountMap)
+		log.Printf("childrenCountMap %#v", childrenCountMap)
 		if allExplored {
 			break
 		}
