@@ -18,7 +18,7 @@ func TestOnePage(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
-	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;}"
+	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080/\"];}"
 
 	if expectedDotOutput != actualDotOutput {
 		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
@@ -39,7 +39,7 @@ func TestOneTwoPages(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
-	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;node[label=\"http://localhost:8080/another-page\"]n2;n1->n2;}"
+	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080\"];n2[label=\"http://localhost:8080/another-page\"];n1->n2;}"
 
 	if expectedDotOutput != actualDotOutput {
 		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
@@ -59,7 +59,7 @@ func TestLoop(t *testing.T) {
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
 
-	expectedDotOutput := "digraph{node[label=\"http://localhost:8080\"]n1;n1->n1;}"
+	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080\"];n1->n1;}"
 
 	if expectedDotOutput != actualDotOutput {
 		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
