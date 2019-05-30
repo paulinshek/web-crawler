@@ -25,33 +25,36 @@ func main() {
 }
 
 func startWebcrawler(start string, domain string) dot.Graph {
+	cStartURL := make(chan string)
+
 	cLinkGetter := make(chan string)
+	cExploredURL := make(chan ExploredURL)
+
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
 	cLinkTidier := make(chan parentChildPair)
 	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan dot.Graph)
 
-	go linkGetter(cLinkGetter, cDomainPrefixer)
+	go linkGetter(cLinkGetter, cDomainPrefixer, cExploredURL)
 	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
 	go domainFilterer(domain, cDomainFilterer, cLinkTidier)
 	go linkTidier(cLinkTidier, cGraphBuilder)
-	go graphBuilder(cGraphBuilder, cLinkGetter, cResultGraph)
+	go graphBuilder(cStartURL, cGraphBuilder, cExploredURL, cLinkGetter, cResultGraph)
 
 	log.Println("pushing link to graphbuilder to make the first node")
-	cGraphBuilder <- parentChildPair{childLink: start}
+	cStartURL <- start
 
 	resultGraph := <-cResultGraph
 	return resultGraph
 }
 
 type parentChildPair struct {
-	parentLink                 string
-	childLink                  string
-	numberOfChildrenFoundSoFar int
+	parentLink string
+	childLink  string
 }
 
-func linkGetter(in chan string, out chan parentChildPair) {
+func linkGetter(in chan string, out chan parentChildPair, cExploredURL chan ExploredURL) {
 	for link := range in {
 		log.Printf("link received %s", link)
 		resp, err := http.Get(link) // GET
@@ -76,13 +79,14 @@ func linkGetter(in chan string, out chan parentChildPair) {
 							if token.Attr[i].Key == "href" {
 								childrenCount++
 								go func() {
-									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val, numberOfChildrenFoundSoFar: childrenCount}
+									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val}
 								}()
 							}
 						}
 					}
 				}
 			}
+			cExploredURL <- ExploredURL{link, childrenCount}
 		} else {
 			log.Printf("ERROR: %s", err)
 		}
@@ -105,7 +109,7 @@ func domainFilterer(domain string, in chan parentChildPair, out chan parentChild
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			out <- parentChild
 		} else {
-			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: "", numberOfChildrenFoundSoFar: parentChild.numberOfChildrenFoundSoFar}
+			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: ""}
 		}
 	}
 	close(out)
@@ -120,62 +124,82 @@ func linkTidier(in chan parentChildPair, out chan parentChildPair) {
 	close(out)
 }
 
-type childrenCount struct {
+// ChildrenCount keeps track of a signal URL: the number of children that have been found
+// so far (from GET-ing their parent) vs the number of children that have been received
+// down the pipeline
+// when these two numbers are equal we know that we are done for this parent
+type ChildrenCount struct {
 	numberOfFoundChildren    int
-	numberOfExploredChildren int
+	numberOfReceivedChildren int
 }
 
-func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, finalOutput chan dot.Graph) {
+// ExploredURL signals when an link has been GOT and all its children have been sent
+type ExploredURL struct {
+	url                   string
+	numberOfChildrenCount int
+}
+
+func graphBuilder(
+	cStartURL chan string,
+	cParentChildPair chan parentChildPair,
+	cExploredURLs chan ExploredURL,
+	outBackToLinkGetter chan string,
+	finalOutput chan dot.Graph) {
+
 	g := dot.NewGraph(dot.Directed)
 	seenBefore := make(map[string]dot.Node)
-	childrenCountMap := make(map[string]childrenCount)
+	childrenCountMap := make(map[string]ChildrenCount)
 
-	for parentChild := range in {
-		log.Printf("itercepted parentChild: %#v", parentChild)
+	startURL := <-cStartURL
+	rootNode := g.Node(startURL)
+	seenBefore[startURL] = rootNode
+	childrenCountMap[startURL] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
+	outBackToLinkGetter <- startURL
+	close(cStartURL)
 
-		// parentLink not null
-		// => not root node
-		// => came from exploring some child (since root gets fed in as a child)
-		// => there exists an extry in childrenCountMap (since root gets fed into graphBuilder to start)
-		if len(parentChild.parentLink) > 0 {
+	var allExplored = false
+	for !allExplored {
+		select {
+		case parentChild := <-cParentChildPair:
+			// link received
+			log.Printf("received parentChild: %#v", parentChild)
+
 			// update the counts
 			oldCounts := childrenCountMap[parentChild.parentLink]
-			var numberOfFoundChildren = oldCounts.numberOfFoundChildren
-			if parentChild.numberOfChildrenFoundSoFar > numberOfFoundChildren {
-				numberOfFoundChildren = parentChild.numberOfChildrenFoundSoFar
-			}
-			newCounts := childrenCount{numberOfFoundChildren: numberOfFoundChildren, numberOfExploredChildren: oldCounts.numberOfExploredChildren + 1}
+			newCounts := ChildrenCount{
+				numberOfFoundChildren:    oldCounts.numberOfFoundChildren,
+				numberOfReceivedChildren: oldCounts.numberOfReceivedChildren + 1}
 			childrenCountMap[parentChild.parentLink] = newCounts
-		}
 
-		// first sort out node creation
-		// if child seen before then get the already existing node instead
-		childNode, childSeenBefore := seenBefore[parentChild.childLink]
-		if childSeenBefore || len(parentChild.childLink) == 0 || parentChild.parentLink == parentChild.childLink {
-			// don't need to go back round
-		} else {
-			childNode = g.Node(parentChild.childLink)
-			seenBefore[parentChild.childLink] = childNode
-			childrenCountMap[parentChild.childLink] = childrenCount{numberOfFoundChildren: -1, numberOfExploredChildren: 0}
-			outBackToLinkGetter <- parentChild.childLink
-
-			// now add an edge if needed
-			if len(parentChild.parentLink) > 0 {
-				parentNode, _ := seenBefore[parentChild.parentLink]
-				g.Edge(parentNode, childNode)
+			// sort out node creation
+			// if child seen before then get the already existing node instead
+			childNode, childSeenBefore := seenBefore[parentChild.childLink]
+			if !childSeenBefore {
+				childNode = g.Node(parentChild.childLink)
+				seenBefore[parentChild.childLink] = childNode
+				childrenCountMap[parentChild.childLink] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
+				outBackToLinkGetter <- parentChild.childLink
 			}
-		}
+			// now add an edge
+			parentNode, _ := seenBefore[parentChild.parentLink]
+			g.Edge(parentNode, childNode)
+		case exploredURL := <-cExploredURLs:
+			log.Printf("recevied exploredURL: %#v", exploredURL)
+			// mark as explored and update total count
+			oldChildrenCount := childrenCountMap[exploredURL.url]
+			newChildrenCount := ChildrenCount{
+				numberOfReceivedChildren: oldChildrenCount.numberOfReceivedChildren,
+				numberOfFoundChildren:    exploredURL.numberOfChildrenCount}
 
-		// check if everything has been explored
-		var allExplored = true
-		for _, value := range childrenCountMap {
-			allExplored = allExplored &&
-				value.numberOfExploredChildren == value.numberOfFoundChildren &&
-				value.numberOfFoundChildren >= 0
-		}
-		log.Printf("childrenCountMap %#v", childrenCountMap)
-		if allExplored {
-			break
+			childrenCountMap[exploredURL.url] = newChildrenCount
+
+			// check if everything has been explored
+			allExplored = true
+			for _, value := range childrenCountMap {
+				allExplored = allExplored &&
+					value.numberOfReceivedChildren == value.numberOfFoundChildren
+			}
+			log.Printf("childrenCountMap %#v", childrenCountMap)
 		}
 	}
 	close(outBackToLinkGetter)
