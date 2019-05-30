@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/emicklei/dot"
-	"golang.org/x/net/html"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/emicklei/dot"
+	"golang.org/x/net/html"
 )
 
 func main() {
@@ -19,17 +20,17 @@ func main() {
 	})
 	go http.ListenAndServe(":8080", h)
 
-	startWebcrawler("http://localhost:8080/", "http://localhost:8080")
+	fmt.Println(startWebcrawler("http://localhost:8080/", "http://localhost:8080").String())
 	// startWebcrawler("http://monzo.com/", "http://monzo.com")
 }
 
-func startWebcrawler(start string, domain string) string {
+func startWebcrawler(start string, domain string) dot.Graph {
 	cLinkGetter := make(chan string)
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
 	cLinkTidier := make(chan parentChildPair)
 	cGraphBuilder := make(chan parentChildPair)
-	cResultGraph := make(chan string)
+	cResultGraph := make(chan dot.Graph)
 
 	go linkGetter(cLinkGetter, cDomainPrefixer)
 	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
@@ -41,7 +42,6 @@ func startWebcrawler(start string, domain string) string {
 	cGraphBuilder <- parentChildPair{childLink: start}
 
 	resultGraph := <-cResultGraph
-	log.Printf("FINAL RESULT: %s", resultGraph)
 	return resultGraph
 }
 
@@ -105,7 +105,7 @@ func domainFilterer(domain string, in chan parentChildPair, out chan parentChild
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			out <- parentChild
 		} else {
-			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: ""}
+			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: "", numberOfChildrenFoundSoFar: parentChild.numberOfChildrenFoundSoFar }
 		}
 	}
 	close(out)
@@ -125,7 +125,7 @@ type childrenCount struct {
 	numberOfExploredChildren int
 }
 
-func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, finalOutput chan string) {
+func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, finalOutput chan dot.Graph) {
 	g := dot.NewGraph(dot.Directed)
 	seenBefore := make(map[string]dot.Node)
 	childrenCountMap := make(map[string]childrenCount)
@@ -140,7 +140,7 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 		if len(parentChild.parentLink) > 0 {
 			// update the counts
 			oldCounts := childrenCountMap[parentChild.parentLink]
-			var numberOfFoundChildren int = oldCounts.numberOfFoundChildren
+			var numberOfFoundChildren = oldCounts.numberOfFoundChildren
 			if parentChild.numberOfChildrenFoundSoFar > numberOfFoundChildren {
 				numberOfFoundChildren = parentChild.numberOfChildrenFoundSoFar
 			}
@@ -167,7 +167,7 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 		}
 
 		// check if everything has been explored
-		var allExplored bool = true
+		var allExplored = true
 		for _, value := range childrenCountMap {
 			allExplored = allExplored &&
 				value.numberOfExploredChildren == value.numberOfFoundChildren &&
@@ -180,6 +180,6 @@ func graphBuilder(in chan parentChildPair, outBackToLinkGetter chan string, fina
 	}
 	close(outBackToLinkGetter)
 
-	finalOutput <- g.String()
+	finalOutput <- *g
 	close(finalOutput)
 }
