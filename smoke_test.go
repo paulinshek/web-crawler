@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,37 +13,49 @@ func TestOnePage(t *testing.T) {
 	h.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "<html></html>")
 	})
-	go http.ListenAndServe(":8080", h)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: h,
+	}
+	defer server.Shutdown(context.Background())
+	go server.ListenAndServe()
 
 	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
-	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080/\"];}"
+	expectedDotOutput := "digraph{node[label=\"http://localhost:8080/\"]n1;}"
 
 	if expectedDotOutput != actualDotOutput {
 		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
+
 	}
 }
 
-func TestOneTwoPages(t *testing.T) {
+func TestTwoPages(t *testing.T) {
 	h := http.NewServeMux()
 	h.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/another-page\">my link</a>")
+		fmt.Fprintf(w, "<html><a href=\"http://localhost:8080/another-page\">my link</a></html>")
 	})
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "<html></html>")
 	})
-	go http.ListenAndServe(":8080", h)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: h,
+	}
+	defer server.Shutdown(context.Background())
+	go server.ListenAndServe()
 
 	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
-	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080\"];n2[label=\"http://localhost:8080/another-page\"];n1->n2;}"
+	expectedDotOutput := "digraph{node[label=\"http://localhost:8080/\"]n1;node[label=\"http://localhost:8080/another-page\"]n2;n1->n2;}"
+	alternativeExpectedDotOutput := "digraph{node[label=\"http://localhost:8080/another-page\"]n2;node[label=\"http://localhost:8080/\"]n1;n1->n2;}"
 
-	if expectedDotOutput != actualDotOutput {
-		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
+	if expectedDotOutput != actualDotOutput && alternativeExpectedDotOutput != actualDotOutput {
+		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s> or : <%s>.", actualDotOutput, expectedDotOutput, alternativeExpectedDotOutput)
 	}
 
 }
@@ -50,16 +63,21 @@ func TestOneTwoPages(t *testing.T) {
 func TestLoop(t *testing.T) {
 	h := http.NewServeMux()
 	h.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">back to me</a>")
+		fmt.Fprintf(w, "<html><a href=\"http://localhost:8080/\">back to me</a></html>")
 	})
-	go http.ListenAndServe(":8080", h)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: h,
+	}
+	defer server.Shutdown(context.Background())
+	go server.ListenAndServe()
 
 	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
 
-	expectedDotOutput := "digraph{n1[label=\"http://localhost:8080\"];n1->n1;}"
+	expectedDotOutput := "digraph{node[label=\"http://localhost:8080/\"]n1;n1->n1;}"
 
 	if expectedDotOutput != actualDotOutput {
 		t.Errorf("Web crawler was incorrect, got: <%s>, want: <%s>.", actualDotOutput, expectedDotOutput)
