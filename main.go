@@ -27,7 +27,7 @@ func main() {
 func startWebcrawler(start string, domain string) dot.Graph {
 	cStartURL := make(chan string)
 
-	cLinkGetter := make(chan string)
+	cLinkGetter := make(chan string, 2)
 	cExploredURL := make(chan ExploredURL)
 
 	cDomainPrefixer := make(chan parentChildPair)
@@ -151,6 +151,7 @@ func graphBuilder(
 	childrenCountMap := make(map[string]ChildrenCount)
 
 	startURL := <-cStartURL
+	log.Println("Start node received and creating new node for it")
 	rootNode := g.Node(startURL)
 	seenBefore[startURL] = rootNode
 	childrenCountMap[startURL] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
@@ -175,16 +176,30 @@ func graphBuilder(
 			// if child seen before then get the already existing node instead
 			childNode, childSeenBefore := seenBefore[parentChild.childLink]
 			if !childSeenBefore {
+				log.Println("Child not seen before, so creating new node for it")
 				childNode = g.Node(parentChild.childLink)
 				seenBefore[parentChild.childLink] = childNode
 				childrenCountMap[parentChild.childLink] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
 				outBackToLinkGetter <- parentChild.childLink
 			}
 			// now add an edge
-			parentNode, _ := seenBefore[parentChild.parentLink]
+			parentNode, err := seenBefore[parentChild.parentLink]
+			if err {
+				log.Println("Error getting parent node")
+			}
+			log.Println("Adding edge from parent node to child node")
 			g.Edge(parentNode, childNode)
+
+			// check if everything has been explored
+			allExplored = true
+			for _, value := range childrenCountMap {
+				allExplored = allExplored &&
+					value.numberOfReceivedChildren == value.numberOfFoundChildren
+			}
+			log.Printf("childrenCountMap %#v", childrenCountMap)
+
 		case exploredURL := <-cExploredURLs:
-			log.Printf("recevied exploredURL: %#v", exploredURL)
+			log.Printf("received exploredURL: %#v", exploredURL)
 			// mark as explored and update total count
 			oldChildrenCount := childrenCountMap[exploredURL.url]
 			newChildrenCount := ChildrenCount{
@@ -200,6 +215,7 @@ func graphBuilder(
 					value.numberOfReceivedChildren == value.numberOfFoundChildren
 			}
 			log.Printf("childrenCountMap %#v", childrenCountMap)
+
 		}
 	}
 	close(outBackToLinkGetter)
