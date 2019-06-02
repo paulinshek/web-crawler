@@ -18,16 +18,16 @@ func main() {
 	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link back</a><a href=\"http://localhost:8080/another-page\">my link to myself</a>")
 	})
-	go http.ListenAndServe(":8080", h)
+	// go http.ListenAndServe(":8080", h)
 
-	fmt.Println(startWebcrawler("http://localhost:8080/", "http://localhost:8080").String())
-	// startWebcrawler("http://monzo.com/", "http://monzo.com")
+	// fmt.Println(startWebcrawler("http://localhost:8080/", "http://localhost:8080").String())
+	fmt.Println(startWebcrawler("http://monzo.com/", "http://monzo.com").String())
 }
 
 func startWebcrawler(start string, domain string) dot.Graph {
 	cStartURL := make(chan string)
 
-	cLinkGetter := make(chan string, 2)
+	cLinkGetter := make(chan string)
 	cExploredURL := make(chan ExploredURL)
 
 	cDomainPrefixer := make(chan parentChildPair)
@@ -180,7 +180,10 @@ func graphBuilder(
 				childNode = g.Node(parentChild.childLink)
 				seenBefore[parentChild.childLink] = childNode
 				childrenCountMap[parentChild.childLink] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
-				outBackToLinkGetter <- parentChild.childLink
+				go func () {
+					outBackToLinkGetter <- parentChild.childLink
+				}()
+				
 			}
 			// now add an edge
 			parentNode, err := seenBefore[parentChild.parentLink]
