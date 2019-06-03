@@ -33,14 +33,15 @@ func startWebcrawler(start string, domain string) dot.Graph {
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
 	cLinkTidier := make(chan parentChildPair)
+	cParentLinkWithFilteredChild := make(chan string)
 	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan dot.Graph)
 
 	go linkGetter(cLinkGetter, cDomainPrefixer, cExploredURL)
 	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
-	go domainFilterer(domain, cDomainFilterer, cLinkTidier)
+	go domainFilterer(domain, cDomainFilterer, cLinkTidier, cParentLinkWithFilteredChild)
 	go linkTidier(cLinkTidier, cGraphBuilder)
-	go graphBuilder(cStartURL, cGraphBuilder, cExploredURL, cLinkGetter, cResultGraph)
+	go graphBuilder(cStartURL, cGraphBuilder, cParentLinkWithFilteredChild, cExploredURL, cLinkGetter, cResultGraph)
 
 	log.Println("pushing link to graphbuilder to make the first node")
 	cStartURL <- start
@@ -104,15 +105,16 @@ func domainPrefixer(domain string, in chan parentChildPair, out chan parentChild
 	close(out)
 }
 
-func domainFilterer(domain string, in chan parentChildPair, out chan parentChildPair) {
+func domainFilterer(domain string, in chan parentChildPair, goodOut chan parentChildPair, badOut chan string) {
 	for parentChild := range in {
 		if strings.HasPrefix(parentChild.childLink, domain) {
-			out <- parentChild
+			goodOut <- parentChild
 		} else {
-			out <- parentChildPair{parentLink: parentChild.parentLink, childLink: ""}
+			badOut <- parentChild.parentLink
 		}
 	}
-	close(out)
+	close(goodOut)
+	close(badOut)
 }
 
 func linkTidier(in chan parentChildPair, out chan parentChildPair) {
@@ -142,6 +144,7 @@ type ExploredURL struct {
 func graphBuilder(
 	cStartURL chan string,
 	cParentChildPair chan parentChildPair,
+	cParentWithFilteredChild chan string,
 	cExploredURLs chan ExploredURL,
 	outBackToLinkGetter chan string,
 	finalOutput chan dot.Graph) {
@@ -200,7 +203,24 @@ func graphBuilder(
 					value.numberOfReceivedChildren == value.numberOfFoundChildren
 			}
 			log.Printf("childrenCountMap %#v", childrenCountMap)
+		case parentLink := <-cParentWithFilteredChild:
+			// link received
+			log.Printf("received parent with filtered child: %#v", parentLink)
 
+			// update the counts
+			oldCounts := childrenCountMap[parentLink]
+			newCounts := ChildrenCount{
+				numberOfFoundChildren:    oldCounts.numberOfFoundChildren,
+				numberOfReceivedChildren: oldCounts.numberOfReceivedChildren + 1}
+			childrenCountMap[parentLink] = newCounts
+
+			// check if everything has been explored
+			allExplored = true
+			for _, value := range childrenCountMap {
+				allExplored = allExplored &&
+					value.numberOfReceivedChildren == value.numberOfFoundChildren
+			}
+			log.Printf("childrenCountMap %#v", childrenCountMap)
 		case exploredURL := <-cExploredURLs:
 			log.Printf("received exploredURL: %#v", exploredURL)
 			// mark as explored and update total count
