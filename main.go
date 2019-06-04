@@ -27,8 +27,8 @@ func main() {
 func startWebcrawler(start string, domain string) dot.Graph {
 	cStartURL := make(chan string)
 
-	cLinkGetter := make(chan string)
-	cExploredURL := make(chan ExploredURL)
+	cLinkGetter := make(chan string, 10000)
+	cExploredURL := make(chan ExploredURL, 2)
 
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
@@ -79,9 +79,7 @@ func linkGetter(in chan string, out chan parentChildPair, cExploredURL chan Expl
 							log.Printf("Available key: %s", token.Attr[i].Key)
 							if token.Attr[i].Key == "href" {
 								childrenCount++
-								go func() {
-									out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val}
-								}()
+								out <- parentChildPair{parentLink: link, childLink: token.Attr[i].Val}
 							}
 						}
 					}
@@ -183,9 +181,7 @@ func graphBuilder(
 				childNode = g.Node(parentChild.childLink)
 				seenBefore[parentChild.childLink] = childNode
 				childrenCountMap[parentChild.childLink] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
-				go func () {
-					outBackToLinkGetter <- parentChild.childLink
-				}()
+				outBackToLinkGetter <- parentChild.childLink
 				
 			}
 			// now add an edge
