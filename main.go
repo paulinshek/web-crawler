@@ -60,7 +60,7 @@ type parentChildPair struct {
 	childLink  string
 }
 
-func linkGetter(in chan string, out chan parentChildPair, cExploredURL chan ExploredURL) {
+func linkGetter(in <-chan string, out chan<- parentChildPair, cExploredURL chan<- ExploredURL) {
 	for link := range in {
 		log.Printf("link received %s", link)
 		resp, err := http.Get(link) // GET
@@ -97,7 +97,7 @@ func linkGetter(in chan string, out chan parentChildPair, cExploredURL chan Expl
 	}
 }
 
-func domainPrefixer(domain string, in chan parentChildPair, out chan parentChildPair) {
+func domainPrefixer(domain string, in <-chan parentChildPair, out chan<- parentChildPair) {
 	for parentChild := range in {
 		if strings.HasPrefix(parentChild.childLink, "/") {
 			parentChild.childLink = domain + parentChild.childLink
@@ -107,7 +107,7 @@ func domainPrefixer(domain string, in chan parentChildPair, out chan parentChild
 	close(out)
 }
 
-func domainFilterer(domain string, in chan parentChildPair, goodOut chan parentChildPair, badOut chan string) {
+func domainFilterer(domain string, in <-chan parentChildPair, goodOut chan<- parentChildPair, badOut chan<- string) {
 	for parentChild := range in {
 		if strings.HasPrefix(parentChild.childLink, domain) {
 			goodOut <- parentChild
@@ -119,7 +119,7 @@ func domainFilterer(domain string, in chan parentChildPair, goodOut chan parentC
 	close(badOut)
 }
 
-func linkTidier(in chan parentChildPair, out chan parentChildPair) {
+func linkTidier(in <-chan parentChildPair, out chan<- parentChildPair) {
 	for parentChild := range in {
 		withoutFragmentIdentifier := strings.Split(parentChild.childLink, "#")[0]
 		parentChild.childLink = withoutFragmentIdentifier
@@ -145,10 +145,10 @@ type ExploredURL struct {
 
 func graphBuilder(
 	cStartURL chan string,
-	cParentChildPair chan parentChildPair,
-	cParentWithFilteredChild chan string,
-	cExploredURLs chan ExploredURL,
-	outBackToLinkGetter chan string,
+	cParentChildPair <-chan parentChildPair,
+	cParentWithFilteredChild <-chan string,
+	cExploredURLs <-chan ExploredURL,
+	outBackToLinkGetter chan<- string,
 	finalOutput chan dot.Graph) {
 
 	g := dot.NewGraph(dot.Directed)
