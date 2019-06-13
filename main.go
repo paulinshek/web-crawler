@@ -6,22 +6,14 @@ import (
 	"golang.org/x/net/html"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 )
 
 func main() {
-	h := http.NewServeMux()
-	h.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<html><a href=\"/another-page#56765\">my link</a><a href=\"http://otherdomain.com\">exclude me</a></html>")
-	})
-	h.HandleFunc("/another-page", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "<a href=\"http://localhost:8080/\">my link back</a><a href=\"http://localhost:8080/another-page\">my link to myself</a>")
-	})
-	// go http.ListenAndServe(":8080", h)
-
-	// fmt.Println(startWebcrawler("http://localhost:8080/", "http://localhost:8080").String())
-	fmt.Println(startWebcrawler("http://monzo.com/", "http://monzo.com").String())
+	root := os.Args[1]
+	fmt.Println(startWebcrawler(root, root).String())
 }
 
 func startWebcrawler(start string, domain string) dot.Graph {
