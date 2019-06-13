@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/emicklei/dot"
+	"golang.org/x/net/html"
 	"log"
 	"net/http"
 	"strings"
-
-	"github.com/emicklei/dot"
-	"golang.org/x/net/html"
+	"sync"
 )
 
 func main() {
@@ -27,8 +27,8 @@ func main() {
 func startWebcrawler(start string, domain string) dot.Graph {
 	cStartURL := make(chan string)
 
-	cLinkGetter := make(chan string, 10000)
-	cExploredURL := make(chan ExploredURL, 2)
+	cLinkGetter := make(chan string, 10000) // max number of links on one page ^ 2
+	cExploredURL := make(chan ExploredURL, 1)
 
 	cDomainPrefixer := make(chan parentChildPair)
 	cDomainFilterer := make(chan parentChildPair)
@@ -37,7 +37,20 @@ func startWebcrawler(start string, domain string) dot.Graph {
 	cGraphBuilder := make(chan parentChildPair)
 	cResultGraph := make(chan dot.Graph)
 
-	go linkGetter(cLinkGetter, cDomainPrefixer, cExploredURL)
+	var wg sync.WaitGroup
+	const numLinkGetters = 20
+	wg.Add(numLinkGetters)
+	for i := 0; i < numLinkGetters; i++ {
+		go func() {
+			linkGetter(cLinkGetter, cDomainPrefixer, cExploredURL)
+			wg.Done()
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(cExploredURL)
+	}()
+
 	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
 	go domainFilterer(domain, cDomainFilterer, cLinkTidier, cParentLinkWithFilteredChild)
 	go linkTidier(cLinkTidier, cGraphBuilder)
@@ -90,7 +103,6 @@ func linkGetter(in chan string, out chan parentChildPair, cExploredURL chan Expl
 			log.Printf("ERROR: %s", err)
 		}
 	}
-	close(out)
 }
 
 func domainPrefixer(domain string, in chan parentChildPair, out chan parentChildPair) {
@@ -182,7 +194,7 @@ func graphBuilder(
 				seenBefore[parentChild.childLink] = childNode
 				childrenCountMap[parentChild.childLink] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
 				outBackToLinkGetter <- parentChild.childLink
-				
+
 			}
 			// now add an edge
 			parentNode, err := seenBefore[parentChild.parentLink]
