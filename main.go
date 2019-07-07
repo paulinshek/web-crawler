@@ -119,14 +119,7 @@ func domainFilterer(base string, in <-chan parentChildPair, goodOut chan<- paren
 	close(badOut)
 }
 
-// ChildrenCount keeps track of a signal URL: the number of children that have been found
-// so far (from GET-ing their parent) vs the number of children that have been received
-// down the pipeline
-// when these two numbers are equal we know that we are done for this parent
-type ChildrenCount struct {
-	numberOfFoundChildren    int
-	numberOfReceivedChildren int
-}
+
 
 // ExploredURL signals when an link has been GOT and all its children have been sent
 type ExploredURL struct {
@@ -142,16 +135,20 @@ func graphBuilder(
 	outBackToLinkGetter chan<- *url.URL,
 	finalOutput chan dot.Graph) {
 
+	// stores the graph that we will output at the end
 	g := dot.NewGraph(dot.Directed)
+	// stops us from getting into infinite loops
 	seenBefore := make(map[string]dot.Node)
-	childrenCountMap := make(map[string]ChildrenCount)
+	// keeps track of the number of children seen vs the number of children we expect to see 
+	// per parent, and then tells us when we are done
+	state := NewStateTracker()
 
 	startURL := <-cStartURL
 	log.Printf("Start url %#v received and creating new node for it", startURL)
 	startURLPath := startURL.Path
 	rootNode := g.Node(startURLPath)
 	seenBefore[startURLPath] = rootNode
-	childrenCountMap[startURLPath] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
+	state.InitialiseRoot(startURLPath)
 	outBackToLinkGetter <- startURL
 	close(cStartURL)
 
@@ -165,12 +162,7 @@ func graphBuilder(
 			parentLinkPath := parentChild.parentLink.Path
 			childLinkPath := parentChild.childLink.Path
 
-			// update the counts
-			oldCounts := childrenCountMap[parentLinkPath]
-			newCounts := ChildrenCount{
-				numberOfFoundChildren:    oldCounts.numberOfFoundChildren,
-				numberOfReceivedChildren: oldCounts.numberOfReceivedChildren + 1}
-			childrenCountMap[parentLinkPath] = newCounts
+			state.ChildOfParent(parentLinkPath)
 
 			// sort out node creation
 			// if child seen before then get the already existing node instead
@@ -179,14 +171,14 @@ func graphBuilder(
 				log.Println("Child not seen before, so creating new node for it")
 				childNode = g.Node(childLinkPath)
 				seenBefore[childLinkPath] = childNode
-				childrenCountMap[childLinkPath] = ChildrenCount{numberOfFoundChildren: -1, numberOfReceivedChildren: 0}
+				state.NewChildFound(childLinkPath)
 				outBackToLinkGetter <- parentChild.childLink
-
 			}
+
 			// now add an edge
 			parentNode, err := seenBefore[parentLinkPath]
 			if err {
-				log.Println("Error getting parent node")
+				log.Println("ERROR: Error getting parent node")
 			}
 			log.Println("Adding edge from parent node to child node")
 			g.Edge(parentNode, childNode)
@@ -194,36 +186,14 @@ func graphBuilder(
 		case parentLink := <-cParentWithFilteredChild:
 			// link received
 			log.Printf("received parent with filtered child: %#v", parentLink)
-
-			parentLinkPath := parentLink.Path
-
-			// update the counts
-			oldCounts := childrenCountMap[parentLinkPath]
-			newCounts := ChildrenCount{
-				numberOfFoundChildren:    oldCounts.numberOfFoundChildren,
-				numberOfReceivedChildren: oldCounts.numberOfReceivedChildren + 1}
-			childrenCountMap[parentLinkPath] = newCounts
+			state.ChildOfParent(parentLink.Path)
 
 		case exploredURL := <-cExploredURLs:
 			log.Printf("received exploredURL: %#v", exploredURL)
-			exploredUrlPath := exploredURL.url.Path
-
-			// mark as explored and update total count
-			oldChildrenCount := childrenCountMap[exploredUrlPath]
-			newChildrenCount := ChildrenCount{
-				numberOfReceivedChildren: oldChildrenCount.numberOfReceivedChildren,
-				numberOfFoundChildren:    exploredURL.numberOfChildrenCount}
-
-			childrenCountMap[exploredUrlPath] = newChildrenCount
+			state.ParentExplored(exploredURL.url.Path, exploredURL.numberOfChildrenCount)
 		}
 
-		// check if everything has been explored
-		allExplored = true
-		for _, value := range childrenCountMap {
-			allExplored = allExplored &&
-				value.numberOfReceivedChildren == value.numberOfFoundChildren
-		}
-		log.Printf("childrenCountMap %#v", childrenCountMap)
+		allExplored = state.IsAllExplored()
 	}
 	close(outBackToLinkGetter)
 
