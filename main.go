@@ -191,13 +191,6 @@ func graphBuilder(
 			log.Println("Adding edge from parent node to child node")
 			g.Edge(parentNode, childNode)
 
-			// check if everything has been explored
-			allExplored = true
-			for _, value := range childrenCountMap {
-				allExplored = allExplored &&
-					value.numberOfReceivedChildren == value.numberOfFoundChildren
-			}
-			log.Printf("childrenCountMap %#v", childrenCountMap)
 		case parentLink := <-cParentWithFilteredChild:
 			// link received
 			log.Printf("received parent with filtered child: %#v", parentLink)
@@ -211,13 +204,6 @@ func graphBuilder(
 				numberOfReceivedChildren: oldCounts.numberOfReceivedChildren + 1}
 			childrenCountMap[parentLinkPath] = newCounts
 
-			// check if everything has been explored
-			allExplored = true
-			for _, value := range childrenCountMap {
-				allExplored = allExplored &&
-					value.numberOfReceivedChildren == value.numberOfFoundChildren
-			}
-			log.Printf("childrenCountMap %#v", childrenCountMap)
 		case exploredURL := <-cExploredURLs:
 			log.Printf("received exploredURL: %#v", exploredURL)
 			exploredUrlPath := exploredURL.url.Path
@@ -229,16 +215,15 @@ func graphBuilder(
 				numberOfFoundChildren:    exploredURL.numberOfChildrenCount}
 
 			childrenCountMap[exploredUrlPath] = newChildrenCount
-
-			// check if everything has been explored
-			allExplored = true
-			for _, value := range childrenCountMap {
-				allExplored = allExplored &&
-					value.numberOfReceivedChildren == value.numberOfFoundChildren
-			}
-			log.Printf("childrenCountMap %#v", childrenCountMap)
-
 		}
+
+		// check if everything has been explored
+		allExplored = true
+		for _, value := range childrenCountMap {
+			allExplored = allExplored &&
+				value.numberOfReceivedChildren == value.numberOfFoundChildren
+		}
+		log.Printf("childrenCountMap %#v", childrenCountMap)
 	}
 	close(outBackToLinkGetter)
 
