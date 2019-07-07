@@ -20,7 +20,7 @@ func TestOnePage(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -47,7 +47,7 @@ func TestTwoPages(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -72,7 +72,7 @@ func TestLoop(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -96,7 +96,7 @@ func TestLinkToDifferentDomain(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -123,7 +123,7 @@ func TestRelativeLink(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)
@@ -149,7 +149,7 @@ func TestFragmentIdentifier(t *testing.T) {
 	defer server.Shutdown(context.Background())
 	go server.ListenAndServe()
 
-	actualDotOutput := startWebcrawler("http://localhost:8080/", "http://localhost:8080").String()
+	actualDotOutput := startWebcrawler("http://localhost:8080/").String()
 	actualDotOutput = strings.Replace(actualDotOutput, " ", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\n", "", -1)
 	actualDotOutput = strings.Replace(actualDotOutput, "\t", "", -1)

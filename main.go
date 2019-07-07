@@ -6,17 +6,19 @@ import (
 	"golang.org/x/net/html"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 )
 
 func main() {
-	root := os.Args[1]
-	fmt.Println(startWebcrawler(root, root).String())
+	baseUrlString := os.Args[1]
+
+	fmt.Println(startWebcrawler(baseUrlString).String())
 }
 
-func startWebcrawler(start string, domain string) dot.Graph {
+func startWebcrawler(start string) dot.Graph {
 	cStartURL := make(chan string)
 
 	cLinkGetter := make(chan string, 10000) // max number of links on one page ^ 2
@@ -43,7 +45,16 @@ func startWebcrawler(start string, domain string) dot.Graph {
 		close(cExploredURL)
 	}()
 
-	go domainPrefixer(domain, cDomainPrefixer, cDomainFilterer)
+	startUrl, err := url.Parse(start)
+	if err != nil {
+		log.Printf("ERROR: Error parsing start url string: %s", start)
+		log.Printf("ERROR: %#v", err)
+		log.Printf("ERROR: Returning empty graph")
+		return *dot.NewGraph(dot.Directed)
+	}
+	domain := startUrl.Hostname()
+
+	go domainPrefixer(startUrl, cDomainPrefixer, cDomainFilterer)
 	go domainFilterer(domain, cDomainFilterer, cLinkTidier, cParentLinkWithFilteredChild)
 	go linkTidier(cLinkTidier, cGraphBuilder)
 	go graphBuilder(cStartURL, cGraphBuilder, cParentLinkWithFilteredChild, cExploredURL, cLinkGetter, cResultGraph)
@@ -97,21 +108,25 @@ func linkGetter(in <-chan string, out chan<- parentChildPair, cExploredURL chan<
 	}
 }
 
-func domainPrefixer(domain string, in <-chan parentChildPair, out chan<- parentChildPair) {
+func domainPrefixer(base *url.URL, in <-chan parentChildPair, out chan<- parentChildPair) {
 	for parentChild := range in {
-		if strings.HasPrefix(parentChild.childLink, "/") {
-			parentChild.childLink = domain + parentChild.childLink
-		}
+		childUrl, _ := url.Parse(parentChild.childLink)
+		parentChild.childLink = base.ResolveReference(childUrl).String()
+		log.Printf("base: %#v", base)
+		log.Printf("new childlink %s", parentChild.childLink)
 		out <- parentChild
 	}
 	close(out)
 }
 
-func domainFilterer(domain string, in <-chan parentChildPair, goodOut chan<- parentChildPair, badOut chan<- string) {
+func domainFilterer(base string, in <-chan parentChildPair, goodOut chan<- parentChildPair, badOut chan<- string) {
 	for parentChild := range in {
-		if strings.HasPrefix(parentChild.childLink, domain) {
+		childUrl, err := url.Parse(parentChild.childLink)
+		if err == nil && childUrl.Hostname() == base {
 			goodOut <- parentChild
 		} else {
+			log.Printf("INFO: bad link %#v", parentChild)
+			log.Printf("INFO: childUrl.Hostname %s and base %s", childUrl.Hostname(), base)
 			badOut <- parentChild.parentLink
 		}
 	}
