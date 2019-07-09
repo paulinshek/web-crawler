@@ -91,8 +91,13 @@ func linkGetter(baseUrl *url.URL, in <-chan *url.URL, out chan<- parentChildPair
 							log.Printf("Available key: %s", token.Attr[i].Key)
 							if token.Attr[i].Key == "href" {
 								childrenCount++
-								childLinkUrl, _ := url.Parse(token.Attr[i].Val)
-								out <- parentChildPair{parentLink: link, childLink: baseUrl.ResolveReference(childLinkUrl)}
+								childLinkUrl, parseErr := url.Parse(token.Attr[i].Val)
+								if (parseErr == nil) {
+									out <- parentChildPair{parentLink: link, childLink: baseUrl.ResolveReference(childLinkUrl)}
+								} else {
+									log.Printf("ERROR: Parsing %s, ignoring", token.Attr[i].Val)
+									childrenCount--
+								}
 							}
 						}
 					}
@@ -194,6 +199,9 @@ func graphBuilder(
 		}
 
 		allExplored = state.IsAllExplored()
+		if allExplored {
+			log.Println("All explored!!")
+		}
 	}
 	close(outBackToLinkGetter)
 
