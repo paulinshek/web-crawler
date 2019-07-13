@@ -2,4 +2,6 @@
 # Usage
 
 go build
-./web-crawler WEBSITE_URL | dot -Tsvg  > site-map.svg
+./web-crawler http://crawl-me.com > output.txt 2> crawler.log
+output.txt > dot -Tsvg  > site-map.svg
+
